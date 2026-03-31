@@ -18,11 +18,13 @@ services:
 
   # ── Backend Service 1: HTTP API ──
   http-api:
+    # WHY both image AND build?
+    # "image" = the Docker Hub image name. Used by "docker compose pull" on EC2.
+    # "build" = how to build locally. Used by "docker compose up --build" on your laptop.
+    # Docker Compose is smart: if you say "pull", it uses image. If you say "--build", it builds.
+    image: prathmeshkurhade02/metaverse-http:latest
     build:
-      # context: where Docker looks for files during COPY commands
-      # "." = project root, so COPY shared/ works in the Dockerfile
       context: .
-      # Which Dockerfile to use (relative to context)
       dockerfile: services/http_api/Dockerfile
     ports:
       # "8000:8000" = map host port 8000 → container port 8000
@@ -47,6 +49,7 @@ services:
 
   # ── Backend Service 2: WebSocket Server ──
   ws-server:
+    image: prathmeshkurhade02/metaverse-ws:latest
     build:
       context: .
       dockerfile: services/ws_server/Dockerfile
@@ -63,6 +66,7 @@ services:
 
   # ── Backend Service 3: AI Assistant ──
   ai-assistant:
+    image: prathmeshkurhade02/metaverse-ai:latest
     build:
       context: .
       dockerfile: services/ai_assistant/Dockerfile
@@ -79,6 +83,7 @@ services:
 
   # ── Frontend (Nginx + React) ──
   frontend:
+    image: prathmeshkurhade02/metaverse-frontend:latest
     build:
       context: .
       dockerfile: frontend/Dockerfile

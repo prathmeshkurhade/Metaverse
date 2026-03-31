@@ -1,0 +1,110 @@
+# ══════════════════════════════════════════════════════════
+# CI/CD Pipeline: Push to main → Build → Push → Deploy
+# ══════════════════════════════════════════════════════════
+#
+# WHAT THIS DOES:
+# 1. You push code to the "main" branch
+# 2. GitHub Actions (a free CI server) picks it up
+# 3. Builds all 4 Docker images on GitHub's fast servers
+# 4. Pushes the images to Docker Hub (cloud storage for images)
+# 5. SSHs into your EC2 server
+# 6. Pulls the new images and restarts containers
+#
+# TOTAL TIME: ~3-5 minutes from push to live on the internet
+
+name: Deploy
+
+# ── When to run ──
+# Only on pushes to main. Not on PRs, not on other branches.
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    # GitHub gives you a free Ubuntu machine to run this on.
+    # It's a fresh machine every time -- nothing from previous runs.
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── Step 1: Get the code ──
+      # Clone your repo onto the GitHub Actions machine
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── Step 2: Login to Docker Hub ──
+      # So we can push images. Uses the secrets you added in GitHub Settings.
+      # ${{ secrets.DOCKERHUB_USERNAME }} reads the secret -- it's never printed in logs.
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # ── Step 3: Build and push all 4 images ──
+      # WHY tag with github.sha?
+      # github.sha is the commit hash (e.g., abc1234). So the image tag tells you
+      # EXACTLY which code is running. "latest" doesn't -- it could be any commit.
+      # We push BOTH tags: the specific commit hash AND "latest".
+      - name: Build and push HTTP API
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: services/http_api/Dockerfile
+          push: true
+          tags: |
+            prathmeshkurhade02/metaverse-http:${{ github.sha }}
+            prathmeshkurhade02/metaverse-http:latest
+
+      - name: Build and push WebSocket Server
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: services/ws_server/Dockerfile
+          push: true
+          tags: |
+            prathmeshkurhade02/metaverse-ws:${{ github.sha }}
+            prathmeshkurhade02/metaverse-ws:latest
+
+      - name: Build and push AI Assistant
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: services/ai_assistant/Dockerfile
+          push: true
+          tags: |
+            prathmeshkurhade02/metaverse-ai:${{ github.sha }}
+            prathmeshkurhade02/metaverse-ai:latest
+
+      - name: Build and push Frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: frontend/Dockerfile
+          push: true
+          tags: |
+            prathmeshkurhade02/metaverse-frontend:${{ github.sha }}
+            prathmeshkurhade02/metaverse-frontend:latest
+
+      # ── Step 4: Deploy to EC2 ──
+      # SSH into your server, pull the new images, restart containers.
+      # appleboy/ssh-action handles the SSH connection using your .pem key.
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd ~/Metaverse
+
+            # Pull the latest images from Docker Hub (instead of building on server)
+            docker compose pull
+
+            # Restart with the new images
+            # --force-recreate: replace old containers even if config hasn't changed
+            # -d: detached (run in background)
+            docker compose up -d --force-recreate
+
+            # Clean up old unused images to save disk space (8GB fills fast)
+            docker image prune -f
