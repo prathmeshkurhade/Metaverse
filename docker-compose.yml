@@ -83,9 +83,15 @@ services:
       context: .
       dockerfile: frontend/Dockerfile
     ports:
-      # Port 80 = standard HTTP port. When you visit http://localhost without
-      # specifying a port, the browser uses port 80 by default.
       - "80:80"
+      # Port 443 = standard HTTPS port. Browsers use this for https:// URLs.
+      - "443:443"
+    volumes:
+      # Mount the SSL certificate files from the host into the container.
+      # These were created by certbot and live at /etc/letsencrypt on the EC2 server.
+      # WHY read-only (:ro)? Nginx only READS the certificates. It should never
+      # modify them. :ro is a safety measure.
+      - /etc/letsencrypt:/etc/letsencrypt:ro
     # WHY depends_on with condition?
     # Without this, Docker starts all 4 containers simultaneously.
     # The frontend's Nginx proxies to http-api, ws-server, ai-assistant.
