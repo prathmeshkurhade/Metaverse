@@ -40,7 +40,7 @@ export default function Login() {
 
   return (
     <div className="container" style={{ marginTop: '10vh' }}>
-      <h1>2D Metaverse by Prathmesh</h1>
+      <h1>2D Metaverse by Prathmesh Kurhade</h1>
       <p style={{ color: '#999', marginBottom: '2rem' }}>
         {isSignup ? 'Create an account' : 'Sign in to continue'}
       </p>
