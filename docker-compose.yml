@@ -1,0 +1,100 @@
+# ══════════════════════════════════════════════════════════
+# Docker Compose -- run all 4 services with one command
+# ══════════════════════════════════════════════════════════
+#
+# Usage:
+#   docker compose up --build      Build images and start all containers
+#   docker compose down             Stop and remove all containers
+#   docker compose logs -f          Follow logs from all services
+#   docker compose ps               Show running containers
+#
+# WHAT THIS FILE DOES:
+# 1. Builds 4 Docker images (one per service)
+# 2. Creates a shared network so containers can talk to each other
+# 3. Starts all 4 containers with the right ports and env vars
+# 4. Health checks ensure services start in the right order
+
+services:
+
+  # ── Backend Service 1: HTTP API ──
+  http-api:
+    build:
+      # context: where Docker looks for files during COPY commands
+      # "." = project root, so COPY shared/ works in the Dockerfile
+      context: .
+      # Which Dockerfile to use (relative to context)
+      dockerfile: services/http_api/Dockerfile
+    ports:
+      # "8000:8000" = map host port 8000 → container port 8000
+      # Left = YOUR machine (localhost:8000)
+      # Right = inside the container (0.0.0.0:8000)
+      - "8000:8000"
+    env_file:
+      # Pass all variables from .env into the container
+      # The container sees SUPABASE_URL, JWT_SECRET, etc. as env vars
+      # WHY env_file instead of baking into image?
+      # Images get pushed to Docker Hub (public). Secrets in images = leaked secrets.
+      # env_file injects them at RUNTIME, not build time.
+      - .env
+    healthcheck:
+      # WHY python instead of curl? python:3.12-slim doesn't have curl installed.
+      # This uses Python's built-in urllib to hit /health. No extra packages needed.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s      # check every 30 seconds
+      timeout: 10s        # fail if no response in 10 seconds
+      retries: 3          # mark unhealthy after 3 consecutive failures
+      start_period: 15s   # give the service 15 seconds to boot before checking
+
+  # ── Backend Service 2: WebSocket Server ──
+  ws-server:
+    build:
+      context: .
+      dockerfile: services/ws_server/Dockerfile
+    ports:
+      - "8001:8001"
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ── Backend Service 3: AI Assistant ──
+  ai-assistant:
+    build:
+      context: .
+      dockerfile: services/ai_assistant/Dockerfile
+    ports:
+      - "8002:8002"
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ── Frontend (Nginx + React) ──
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      # Port 80 = standard HTTP port. When you visit http://localhost without
+      # specifying a port, the browser uses port 80 by default.
+      - "80:80"
+    # WHY depends_on with condition?
+    # Without this, Docker starts all 4 containers simultaneously.
+    # The frontend's Nginx proxies to http-api, ws-server, ai-assistant.
+    # If those aren't ready yet, Nginx gets "connection refused" errors.
+    # depends_on + service_healthy = "wait until the backend is actually responding"
+    depends_on:
+      http-api:
+        condition: service_healthy
+      ws-server:
+        condition: service_healthy
+      ai-assistant:
+        condition: service_healthy

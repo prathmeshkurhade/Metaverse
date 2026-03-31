@@ -1,4 +1,4 @@
-# DevOps Mastery: 2D Metaverse in FastAPI - Complete Learning Plan
+ # DevOps Mastery: 2D Metaverse in FastAPI - Complete Learning Plan
 
 ## Context
 

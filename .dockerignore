@@ -1,0 +1,33 @@
+# Virtual environment -- 200MB+ of packages already installed in the container via pip
+venv/
+.venv/
+
+# Node modules -- frontend Dockerfile runs npm install inside the container
+node_modules/
+frontend/node_modules/
+
+# Git history -- not needed to run the app, just wastes space
+.git/
+
+# Python bytecode -- regenerated automatically when Python runs
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Environment files -- secrets should NEVER be baked into images
+# They're injected at runtime via docker-compose or k8s secrets
+.env
+.env.*
+
+# IDE and OS junk
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Test and build artifacts
+.pytest_cache/
+htmlcov/
+dist/
+build/
+frontend/dist/
