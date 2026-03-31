@@ -98,6 +98,9 @@ jobs:
           script: |
             cd ~/Metaverse
 
+            # Pull latest code so docker-compose.yml and nginx.conf stay up to date
+            git pull
+
             # Pull the latest images from Docker Hub (instead of building on server)
             docker compose pull
 
