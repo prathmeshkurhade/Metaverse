@@ -1,0 +1,21 @@
+# FastAPI framework + Uvicorn ASGI server
+# WHY uvicorn[standard]? The [standard] extra installs uvloop (faster event loop)
+# and httptools (faster HTTP parsing). ~30% faster than plain uvicorn.
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+
+# Supabase Python client (PostgreSQL-as-a-service)
+supabase>=2.0.0
+
+# JWT handling -- python-jose supports HS256, RS256, ES256
+# WHY [cryptography]? The cryptography backend is faster and more secure
+# than the default python-ecdsa backend.
+python-jose[cryptography]>=3.3.0
+
+# Password hashing -- bcrypt is the industry standard for password hashing
+bcrypt>=4.0.0
+
+# Settings management from environment variables
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+python-dotenv>=1.0.0
