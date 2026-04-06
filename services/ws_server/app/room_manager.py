@@ -52,14 +52,14 @@ class Room:
     A room (space) with its dimensions and connected users.
 
     users dict: maps user_id -> UserConnection
-    WHY a dict instead of a list?
-    O(1) lookup by user_id. When user A moves, we need to find user A's
-    connection instantly. A list would require iterating through all users.
+    blocked_tiles: set of (x, y) tuples where static elements are placed.
+    Players cannot move onto these tiles (collision detection).
     """
     space_id: str
     width: int
     height: int
     users: dict[str, UserConnection] = field(default_factory=dict)
+    blocked_tiles: set = field(default_factory=set)
 
 
 class RoomManager:
@@ -80,7 +80,7 @@ class RoomManager:
 
     async def join_room(
         self, space_id: str, user_id: str, websocket: WebSocket,
-        width: int, height: int,
+        width: int, height: int, blocked_tiles: set | None = None,
     ) -> tuple[int, int, list[dict]]:
         """
         Add a user to a room.
@@ -88,11 +88,6 @@ class RoomManager:
         Returns:
         - (spawn_x, spawn_y): random spawn position for the new user
         - existing_users: list of {userId, x, y} for users already in the room
-
-        SPAWN LOGIC:
-        Random position within the room. In a real game, you'd have designated
-        spawn points. For our purposes, random is fine. The test spec just checks
-        that spawn coordinates exist, not their specific values.
         """
         # Create room if it doesn't exist
         if space_id not in self.rooms:
@@ -100,14 +95,23 @@ class RoomManager:
                 space_id=space_id,
                 width=width,
                 height=height,
+                blocked_tiles=blocked_tiles or set(),
             )
+        elif blocked_tiles:
+            # Update blocked tiles if room already exists (elements may have changed)
+            self.rooms[space_id].blocked_tiles = blocked_tiles
 
         room = self.rooms[space_id]
 
-        # Generate random spawn position
-        # WHY max(1, ...) and min? Avoid spawning at the very edge (0) or outside bounds
+        # Generate random spawn position that's NOT on a blocked tile
+        max_attempts = 50
         spawn_x = random.randint(0, max(0, width - 1))
         spawn_y = random.randint(0, max(0, height - 1))
+        for _ in range(max_attempts):
+            if (spawn_x, spawn_y) not in room.blocked_tiles:
+                break
+            spawn_x = random.randint(0, max(0, width - 1))
+            spawn_y = random.randint(0, max(0, height - 1))
 
         # Get list of existing users BEFORE adding the new one
         existing_users = [
@@ -175,6 +179,11 @@ class RoomManager:
         dx = abs(new_x - user_conn.x)
         dy = abs(new_y - user_conn.y)
         if dx > 1 or dy > 1:
+            await self._send_movement_rejected(user_conn)
+            return False
+
+        # Check 3: Collision with static elements (obstacles)
+        if (new_x, new_y) in room.blocked_tiles:
             await self._send_movement_rejected(user_conn)
             return False
 

@@ -177,6 +177,15 @@ async def _handle_join(websocket: WebSocket, payload: dict) -> str | None:
     width = space.data[0]["width"]
     height = space.data[0]["height"]
 
+    # Fetch static elements to build collision map
+    elements = (
+        supabase.table("space_elements")
+        .select("x, y")
+        .eq("space_id", space_id)
+        .execute()
+    )
+    blocked_tiles = {(el["x"], el["y"]) for el in elements.data}
+
     # Join the room
     spawn_x, spawn_y, existing_users = await room_manager.join_room(
         space_id=space_id,
@@ -184,6 +193,7 @@ async def _handle_join(websocket: WebSocket, payload: dict) -> str | None:
         websocket=websocket,
         width=width,
         height=height,
+        blocked_tiles=blocked_tiles,
     )
 
     # Send "space-joined" back to this user

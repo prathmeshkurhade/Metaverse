@@ -1,23 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { api, connectWebSocket } from '../hooks/useApi'
+import { ArrowLeft, Bot, Send } from 'lucide-react'
+import { AVATARS, drawSprite } from '../sprites'
 
-/**
- * Arena page -- the actual 2D metaverse room.
- *
- * Three main features:
- * 1. Canvas: renders a grid with elements and user avatars
- * 2. WebSocket: real-time position updates
- * 3. Chat sidebar: AI Room Assistant
- *
- * WHY Canvas (not DOM elements)?
- * A space can have 100+ elements and 20+ users. Rendering each as a DOM
- * element would be slow (DOM operations are expensive). Canvas draws pixels
- * directly to a bitmap -- much faster for game-like rendering.
- */
-
-const TILE_SIZE = 20  // Each grid unit = 20x20 pixels on screen
-const AVATAR_COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#f59e0b', '#8b5cf6', '#ec4899']
+const TILE_SIZE = 24
 
 export default function Arena() {
   const { spaceId } = useParams()
@@ -25,23 +12,19 @@ export default function Arena() {
   const canvasRef = useRef(null)
   const wsRef = useRef(null)
 
-  // State
   const [myPosition, setMyPosition] = useState(null)
-  const [users, setUsers] = useState({})  // userId -> {x, y}
+  const [users, setUsers] = useState({})
   const [elements, setElements] = useState([])
   const [dimensions, setDimensions] = useState({ w: 100, h: 100 })
   const [messages, setMessages] = useState([])
   const [chatInput, setChatInput] = useState('')
-  const [myUserId, setMyUserId] = useState(null)
 
-  // Load space details and connect WebSocket
   useEffect(() => {
     if (!localStorage.getItem('token')) {
       navigate('/login')
       return
     }
 
-    // Fetch space elements for rendering
     api.getSpace(spaceId).then(data => {
       if (data.dimensions) {
         const [w, h] = data.dimensions.split('x').map(Number)
@@ -50,12 +33,10 @@ export default function Arena() {
       setElements(data.elements || [])
     })
 
-    // Load existing chat history
     api.getChatHistory(spaceId).then(data => {
       setMessages(data.messages || [])
     }).catch(() => {})
 
-    // Connect WebSocket
     const ws = connectWebSocket(spaceId, handleWsMessage)
     wsRef.current = ws
 
@@ -64,10 +45,11 @@ export default function Arena() {
     }
   }, [spaceId])
 
-  // Handle keyboard movement
   useEffect(() => {
     function handleKeyDown(e) {
       if (!myPosition || !wsRef.current) return
+      // Don't capture keys when typing in chat
+      if (e.target.tagName === 'INPUT') return
 
       let newX = myPosition.x
       let newY = myPosition.y
@@ -82,9 +64,11 @@ export default function Arena() {
 
       e.preventDefault()
 
-      // Optimistic update -- move immediately, server will correct if invalid
-      setMyPosition({ x: newX, y: newY })
+      // Client-side collision check (prevents jitter from server rejection)
+      const blocked = elements.some(el => el.x === newX && el.y === newY)
+      if (blocked) return
 
+      setMyPosition({ x: newX, y: newY })
       wsRef.current.send(JSON.stringify({
         type: 'move',
         payload: { x: newX, y: newY },
@@ -95,7 +79,6 @@ export default function Arena() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [myPosition])
 
-  // Redraw canvas whenever state changes
   useEffect(() => {
     draw()
   }, [myPosition, users, elements, dimensions])
@@ -104,31 +87,25 @@ export default function Arena() {
     switch (data.type) {
       case 'space-joined':
         setMyPosition(data.payload.spawn)
-        // Store existing users
         const userMap = {}
         data.payload.users.forEach(u => { userMap[u.userId] = { x: u.x, y: u.y } })
         setUsers(userMap)
         break
-
       case 'user-joined':
         setUsers(prev => ({
           ...prev,
           [data.payload.userId]: { x: data.payload.x, y: data.payload.y },
         }))
         break
-
       case 'movement':
         setUsers(prev => ({
           ...prev,
           [data.payload.userId]: { x: data.payload.x, y: data.payload.y },
         }))
         break
-
       case 'movement-rejected':
-        // Server corrected our position
         setMyPosition({ x: data.payload.x, y: data.payload.y })
         break
-
       case 'user-left':
         setUsers(prev => {
           const next = { ...prev }
@@ -146,26 +123,25 @@ export default function Arena() {
 
     const canvasW = dimensions.w * TILE_SIZE
     const canvasH = dimensions.h * TILE_SIZE
-    canvas.width = Math.min(canvasW, 800)
-    canvas.height = Math.min(canvasH, 600)
+    canvas.width = Math.min(canvasW, window.innerWidth - 320)
+    canvas.height = window.innerHeight
 
-    // Viewport offset (center on player)
     let offsetX = 0, offsetY = 0
     if (myPosition) {
       offsetX = Math.max(0, myPosition.x * TILE_SIZE - canvas.width / 2)
       offsetY = Math.max(0, myPosition.y * TILE_SIZE - canvas.height / 2)
     }
 
-    // Clear
-    ctx.fillStyle = '#111'
+    // Background
+    ctx.fillStyle = '#0a0a0f'
     ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-    // Draw grid lines
-    ctx.strokeStyle = '#222'
-    ctx.lineWidth = 0.5
+    // Grid lines
+    ctx.strokeStyle = 'rgba(99, 102, 241, 0.06)'
+    ctx.lineWidth = 1
     for (let x = 0; x < canvasW; x += TILE_SIZE) {
       const screenX = x - offsetX
-      if (screenX >= 0 && screenX <= canvas.width) {
+      if (screenX >= -1 && screenX <= canvas.width + 1) {
         ctx.beginPath()
         ctx.moveTo(screenX, 0)
         ctx.lineTo(screenX, canvas.height)
@@ -174,7 +150,7 @@ export default function Arena() {
     }
     for (let y = 0; y < canvasH; y += TILE_SIZE) {
       const screenY = y - offsetY
-      if (screenY >= 0 && screenY <= canvas.height) {
+      if (screenY >= -1 && screenY <= canvas.height + 1) {
         ctx.beginPath()
         ctx.moveTo(0, screenY)
         ctx.lineTo(canvas.width, screenY)
@@ -182,32 +158,77 @@ export default function Arena() {
       }
     }
 
-    // Draw elements (green squares)
-    ctx.fillStyle = '#166534'
+    // Elements (obstacles) -- draw as trees/rocks based on position
     elements.forEach(el => {
       const sx = el.x * TILE_SIZE - offsetX
       const sy = el.y * TILE_SIZE - offsetY
-      ctx.fillRect(sx + 2, sy + 2, TILE_SIZE - 4, TILE_SIZE - 4)
+      const t = TILE_SIZE
+
+      // Alternate between tree and rock based on position for variety
+      const isTree = (el.x + el.y) % 3 !== 0
+
+      if (isTree) {
+        // Tree: brown trunk + green foliage
+        // Trunk
+        ctx.fillStyle = '#78350f'
+        ctx.fillRect(sx + t * 0.35, sy + t * 0.55, t * 0.3, t * 0.45)
+        // Foliage (circle)
+        ctx.fillStyle = '#166534'
+        ctx.beginPath()
+        ctx.arc(sx + t / 2, sy + t * 0.35, t * 0.4, 0, Math.PI * 2)
+        ctx.fill()
+        // Lighter highlight
+        ctx.fillStyle = '#22c55e'
+        ctx.beginPath()
+        ctx.arc(sx + t * 0.4, sy + t * 0.28, t * 0.15, 0, Math.PI * 2)
+        ctx.fill()
+      } else {
+        // Rock: gray with darker shadow
+        ctx.fillStyle = '#374151'
+        ctx.beginPath()
+        ctx.moveTo(sx + t * 0.15, sy + t * 0.85)
+        ctx.lineTo(sx + t * 0.3, sy + t * 0.2)
+        ctx.lineTo(sx + t * 0.7, sy + t * 0.15)
+        ctx.lineTo(sx + t * 0.9, sy + t * 0.55)
+        ctx.lineTo(sx + t * 0.75, sy + t * 0.85)
+        ctx.closePath()
+        ctx.fill()
+        // Highlight
+        ctx.fillStyle = '#4b5563'
+        ctx.beginPath()
+        ctx.moveTo(sx + t * 0.3, sy + t * 0.25)
+        ctx.lineTo(sx + t * 0.5, sy + t * 0.2)
+        ctx.lineTo(sx + t * 0.6, sy + t * 0.4)
+        ctx.lineTo(sx + t * 0.35, sy + t * 0.45)
+        ctx.closePath()
+        ctx.fill()
+      }
     })
 
-    // Draw other users
-    Object.entries(users).forEach(([userId, pos], idx) => {
+    // Other users -- draw pixel art sprites
+    Object.entries(users).forEach(([, pos], idx) => {
       const sx = pos.x * TILE_SIZE - offsetX
       const sy = pos.y * TILE_SIZE - offsetY
-      ctx.fillStyle = AVATAR_COLORS[idx % AVATAR_COLORS.length]
-      ctx.beginPath()
-      ctx.arc(sx + TILE_SIZE / 2, sy + TILE_SIZE / 2, TILE_SIZE / 2 - 2, 0, Math.PI * 2)
-      ctx.fill()
+      const sprite = AVATARS[idx % AVATARS.length]
+      drawSprite(ctx, sprite, sx, sy, TILE_SIZE)
     })
 
-    // Draw my avatar (white circle)
+    // My avatar -- draw my selected sprite with glow
     if (myPosition) {
       const sx = myPosition.x * TILE_SIZE - offsetX
       const sy = myPosition.y * TILE_SIZE - offsetY
-      ctx.fillStyle = '#fff'
-      ctx.beginPath()
-      ctx.arc(sx + TILE_SIZE / 2, sy + TILE_SIZE / 2, TILE_SIZE / 2 - 2, 0, Math.PI * 2)
-      ctx.fill()
+
+      const myAvatarId = localStorage.getItem('avatarId') || 'knight'
+      const mySprite = AVATARS.find(a => a.id === myAvatarId) || AVATARS[0]
+
+      // Glow effect behind sprite
+      ctx.shadowColor = mySprite.color
+      ctx.shadowBlur = 12
+      ctx.fillStyle = 'rgba(0,0,0,0)'
+      ctx.fillRect(sx, sy, TILE_SIZE, TILE_SIZE)
+      ctx.shadowBlur = 0
+
+      drawSprite(ctx, mySprite, sx, sy, TILE_SIZE)
     }
   }
 
@@ -217,8 +238,6 @@ export default function Arena() {
 
     const msg = chatInput.trim()
     setChatInput('')
-
-    // Optimistic: add user message immediately
     setMessages(prev => [...prev, { role: 'user', content: msg }])
 
     try {
@@ -234,33 +253,40 @@ export default function Arena() {
       {/* Canvas */}
       <div className="canvas-wrapper">
         <canvas ref={canvasRef} />
-        <div style={{ position: 'absolute', top: 8, left: 8, color: '#666', fontSize: '0.75rem' }}>
-          {myPosition ? `Position: (${myPosition.x}, ${myPosition.y})` : 'Connecting...'} |
-          {' '}{Object.keys(users).length} other user(s) |
-          {' '}WASD or Arrow keys to move
+
+        <div className="arena-hud">
+          {myPosition && (
+            <span className="hud-badge">
+              {myPosition.x}, {myPosition.y}
+            </span>
+          )}
+          <span className="hud-badge">
+            {Object.keys(users).length} online
+          </span>
+          <span className="hud-badge">
+            WASD to move
+          </span>
         </div>
-        <button
-          onClick={() => navigate('/spaces')}
-          style={{ position: 'absolute', top: 8, right: 8, fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
-        >
-          Leave
-        </button>
+
+        <div className="arena-leave-btn">
+          <button className="btn-ghost" onClick={() => navigate('/spaces')}>
+            <ArrowLeft size={16} /> Leave
+          </button>
+        </div>
       </div>
 
       {/* Chat Sidebar */}
       <div className="chat-sidebar">
-        <div style={{ padding: '0.75rem', borderBottom: '1px solid #333', fontWeight: 600 }}>
-          AI Room Assistant
+        <div className="chat-header">
+          <Bot size={18} /> AI Assistant
         </div>
         <div className="chat-messages">
           {messages.length === 0 && (
-            <p style={{ color: '#666', fontSize: '0.875rem' }}>
-              Ask me anything about this room!
-            </p>
+            <p className="chat-empty">Ask me anything about this room</p>
           )}
           {messages.map((msg, i) => (
             <div key={i} className={`chat-message ${msg.role}`}>
-              <div style={{ fontSize: '0.7rem', color: '#999', marginBottom: '0.25rem' }}>
+              <div className="chat-message-role">
                 {msg.role === 'user' ? 'You' : 'AI'}
               </div>
               {msg.content}
@@ -273,7 +299,7 @@ export default function Arena() {
             onChange={e => setChatInput(e.target.value)}
             placeholder="Ask the AI..."
           />
-          <button type="submit">Send</button>
+          <button type="submit"><Send size={16} /></button>
         </form>
       </div>
     </div>

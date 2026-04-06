@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import Login from './pages/Login'
+import AvatarSelect from './pages/AvatarSelect'
 import Spaces from './pages/Spaces'
 import Arena from './pages/Arena'
 import './index.css'
@@ -22,6 +23,7 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/avatar" element={<AvatarSelect />} />
         <Route path="/spaces" element={<Spaces />} />
         <Route path="/arena/:spaceId" element={<Arena />} />
         <Route path="*" element={<Navigate to="/login" />} />

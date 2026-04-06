@@ -35,6 +35,7 @@ class SpaceService:
         dimensions: str | None,
         map_id: str | None,
         creator_id: str,
+        is_public: bool = False,
     ) -> str:
         """
         Create a new space, optionally from a map template.
@@ -80,6 +81,7 @@ class SpaceService:
                 "height": height,
                 "creator_id": creator_id,
                 "map_id": map_id,
+                "is_public": is_public,
             })
             .execute()
         )
@@ -137,7 +139,7 @@ class SpaceService:
         """List all spaces owned by a user."""
         result = (
             supabase.table("spaces")
-            .select("id, name, width, height, thumbnail")
+            .select("id, name, width, height, thumbnail, is_public")
             .eq("creator_id", user_id)
             .execute()
         )
@@ -147,6 +149,29 @@ class SpaceService:
                 name=row["name"],
                 dimensions=f"{row['width']}x{row['height']}",
                 thumbnail=row.get("thumbnail"),
+                isPublic=row.get("is_public", False),
+            )
+            for row in result.data
+        ]
+
+    async def list_public_spaces(self) -> list[SpaceListItem]:
+        """List all public spaces from all users."""
+        result = (
+            supabase.table("spaces")
+            .select("id, name, width, height, thumbnail, is_public, creator_id, users(username)")
+            .eq("is_public", True)
+            .order("created_at", desc=True)
+            .limit(50)
+            .execute()
+        )
+        return [
+            SpaceListItem(
+                id=row["id"],
+                name=row["name"],
+                dimensions=f"{row['width']}x{row['height']}",
+                thumbnail=row.get("thumbnail"),
+                isPublic=True,
+                creatorName=row.get("users", {}).get("username") if row.get("users") else None,
             )
             for row in result.data
         ]

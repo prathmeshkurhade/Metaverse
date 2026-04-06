@@ -54,11 +54,16 @@ export const api = {
     return res.json()
   },
 
-  async createSpace(name, dimensions) {
+  async listPublicSpaces() {
+    const res = await fetch(`${API_BASE}/space/public`, { headers: getHeaders() })
+    return res.json()
+  },
+
+  async createSpace(name, dimensions, isPublic = false) {
     const res = await fetch(`${API_BASE}/space`, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({ name, dimensions }),
+      body: JSON.stringify({ name, dimensions, isPublic }),
     })
     return res.json()
   },

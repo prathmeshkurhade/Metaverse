@@ -49,6 +49,7 @@ async def create_space(
             dimensions=request.dimensions,
             map_id=request.mapId,
             creator_id=user["id"],
+            is_public=request.isPublic,
         )
         return CreateSpaceResponse(spaceId=space_id)
     except ValueError as e:
@@ -83,15 +84,17 @@ async def delete_space(
 
 @router.get("/space/all", response_model=SpaceListResponse)
 async def list_spaces(user: dict = Depends(get_current_user)):
-    """
-    List all spaces owned by the current user.
-
-    WHY only the user's spaces?
-    Privacy. Users should see their own rooms. A separate "discover" endpoint
-    could show public rooms, but the test spec only tests owned spaces.
-    """
+    """List all spaces owned by the current user."""
     service = SpaceService()
     spaces = await service.list_spaces(user_id=user["id"])
+    return SpaceListResponse(spaces=spaces)
+
+
+@router.get("/space/public", response_model=SpaceListResponse)
+async def list_public_spaces(user: dict = Depends(get_current_user)):
+    """List all public spaces from all users. Anyone can join these."""
+    service = SpaceService()
+    spaces = await service.list_public_spaces()
     return SpaceListResponse(spaces=spaces)
 
 

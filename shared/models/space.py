@@ -16,12 +16,9 @@ from pydantic import BaseModel, Field
 class CreateSpaceRequest(BaseModel):
     """POST /api/v1/space body"""
     name: str = Field(..., min_length=1)
-    # dimensions format: "100x200" (width x height)
-    # WHY a string instead of separate width/height fields?
-    # Because the test spec sends "dimensions": "100x200" as a single string.
-    # We parse it in the service layer. Not ideal API design, but matches the spec.
     dimensions: Optional[str] = None
-    mapId: Optional[str] = None  # If provided, space inherits map's dimensions and elements
+    mapId: Optional[str] = None
+    isPublic: bool = False  # public rooms can be joined by anyone
 
 
 class AddElementRequest(BaseModel):
@@ -62,6 +59,8 @@ class SpaceListItem(BaseModel):
     name: str
     dimensions: str
     thumbnail: Optional[str] = None
+    isPublic: bool = False
+    creatorName: Optional[str] = None
 
 
 class SpaceListResponse(BaseModel):
